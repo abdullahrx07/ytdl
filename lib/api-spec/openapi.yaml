@@ -1,0 +1,90 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: download
+    description: YouTube download URL generation
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /dl:
+    get:
+      operationId: getDownloadUrl
+      tags: [download]
+      summary: Generate a YouTube MP3 download URL
+      description: Runs the upstream conversion flow and returns the resulting download URL.
+      parameters:
+        - name: link
+          in: query
+          required: true
+          description: A YouTube video URL
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Download URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadResponse"
+        "400":
+          description: Invalid or missing video URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Upstream conversion failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    DownloadResponse:
+      type: object
+      properties:
+        author:
+          type: string
+        downloadUrl:
+          type: string
+        title:
+          type: string
+      required:
+        - author
+        - downloadUrl
+        - title
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
