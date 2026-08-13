@@ -131,6 +131,22 @@ async function fetchJson(
   return body;
 }
 
+async function fetchYoutubeTitle(link: string): Promise<string | undefined> {
+  try {
+    const oembedUrl = new URL("https://www.youtube.com/oembed");
+    oembedUrl.searchParams.set("url", link);
+    oembedUrl.searchParams.set("format", "json");
+
+    const metadata = await fetchJson(oembedUrl.toString());
+    const title = metadata["title"];
+    return typeof title === "string" && title.trim()
+      ? title.trim()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function buildConvertRequestUrl(
   convertUrl: string,
   videoId: string,
@@ -267,9 +283,13 @@ async function handleDownload(req: Request, res: Response): Promise<void> {
       return;
     }
 
+    const upstreamTitle =
+      typeof result.title === "string" ? result.title.trim() : "";
+    const title = upstreamTitle || (await fetchYoutubeTitle(link)) || "";
+
     res.json({
       author: "rX",
-      title: result.title ?? "",
+      title,
       format,
       downloadUrl: buildDownloadUrl(result.downloadURL, videoId, format),
     });
