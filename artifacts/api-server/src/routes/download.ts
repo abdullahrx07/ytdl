@@ -8,7 +8,8 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_CONVERT_REDIRECTS = 3;
 const MAX_PROGRESS_POLLS = 30;
 const PROGRESS_POLL_INTERVAL_MS = 1_000;
-const MAX_VERIFY_RETRIES = 5; // ✅ downloadURL "not-actually-ready" hole koybar retry korbe
+const MAX_VERIFY_RETRIES = 2; // ✅ error persistent hole beshi retry lav nai, fail-fast beshi joruri
+const OVERALL_DEADLINE_MS = 25_000; // ✅ eto shomoy paar hole ar retry na kore soja error dibe
 const UPSTREAM_HEADERS = {
   Accept: "application/json",
   Origin: "https://y2mate.gs",
@@ -188,10 +189,15 @@ function buildDownloadUrl(
 // {"progress":0,"error":6} type status JSON ferot dey (conversion asholei ready na).
 async function verifyDownloadUrl(url: string): Promise<boolean> {
   try {
+    // ✅ Range header diye maatro prothom 1KB chai — full video/audio pull kora lagbe na,
+    // tai verify fast hoy ar server bandwidth/somoy bachbe
     const response = await fetch(url, {
       method: "GET",
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      headers: UPSTREAM_HEADERS,
+      signal: AbortSignal.timeout(8_000),
+      headers: {
+        ...UPSTREAM_HEADERS,
+        Range: "bytes=0-1023",
+      },
     });
 
     const contentType = response.headers.get("content-type") || "";
@@ -200,7 +206,6 @@ async function verifyDownloadUrl(url: string): Promise<boolean> {
       contentType.includes("audio") ||
       contentType.includes("octet-stream");
 
-    // body ta consume/cancel kore dilam, actual data client-side abar fresh fetch korbe
     try {
       await response.body?.cancel();
     } catch {
@@ -332,10 +337,16 @@ async function handleDownload(req: Request, res: Response): Promise<void> {
     let finalUrl: string | undefined;
     let title = "";
     let lastError: unknown;
+    const startedAt = Date.now();
 
     // ✅ MAX_VERIFY_RETRIES bar full conversion retry kore, jotokkhon na actual
     // streamable media link paoa jai (etacloud majhe majhe fake-ready downloadURL dey)
+    // — kintu OVERALL_DEADLINE_MS paar hoye gele ar retry na kore fail-fast kore
     for (let attempt = 0; attempt < MAX_VERIFY_RETRIES; attempt += 1) {
+      if (Date.now() - startedAt > OVERALL_DEADLINE_MS) {
+        req.log.warn({ format, attempt }, "Overall deadline exceeded, aborting retries");
+        break;
+      }
       try {
         const conversion = await startConversion(videoId, format);
         const result = await waitForDownload(conversion);
