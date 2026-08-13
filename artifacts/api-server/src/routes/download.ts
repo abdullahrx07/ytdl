@@ -8,6 +8,7 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_CONVERT_REDIRECTS = 3;
 const MAX_PROGRESS_POLLS = 30;
 const PROGRESS_POLL_INTERVAL_MS = 1_000;
+const MAX_VERIFY_RETRIES = 5; // ✅ downloadURL "not-actually-ready" hole koybar retry korbe
 const UPSTREAM_HEADERS = {
   Accept: "application/json",
   Origin: "https://y2mate.gs",
@@ -30,6 +31,16 @@ type ConversionResult = {
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null;
+}
+
+// ✅ upstream error code non-zero/truthy hole eta treat kora hoy as real failure,
+// even jodi downloadURL field thakeo (etacloud majhe majhe dutai ekshathe pathay)
+function hasUpstreamError(result: ConversionResult): boolean {
+  const err = result.error;
+  if (err === undefined || err === null) return false;
+  if (typeof err === "number") return err !== 0;
+  if (typeof err === "string") return err.trim() !== "" && err.trim() !== "0";
+  return Boolean(err);
 }
 
 function getLink(req: Request): string | undefined {
@@ -172,6 +183,36 @@ function buildDownloadUrl(
   return url.toString();
 }
 
+// ✅ NEW: downloadURL asholei streamable media kina check kore —
+// etacloud majhe majhe "downloadURL" field dey kintu hit korle actual e
+// {"progress":0,"error":6} type status JSON ferot dey (conversion asholei ready na).
+async function verifyDownloadUrl(url: string): Promise<boolean> {
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      headers: UPSTREAM_HEADERS,
+    });
+
+    const contentType = response.headers.get("content-type") || "";
+    const looksLikeMedia =
+      contentType.includes("video") ||
+      contentType.includes("audio") ||
+      contentType.includes("octet-stream");
+
+    // body ta consume/cancel kore dilam, actual data client-side abar fresh fetch korbe
+    try {
+      await response.body?.cancel();
+    } catch {
+      /* ignore */
+    }
+
+    return looksLikeMedia;
+  } catch {
+    return false;
+  }
+}
+
 async function startConversion(
   videoId: string,
   format: DownloadFormat,
@@ -197,6 +238,15 @@ async function startConversion(
     buildConvertRequestUrl(convertUrl, videoId, format),
   );
   for (let attempt = 0; attempt < MAX_CONVERT_REDIRECTS; attempt += 1) {
+    const typedResult = result as ConversionResult;
+
+    // ✅ error field thakle downloadURL thakleo eta ignore na kore throw kori
+    if (hasUpstreamError(typedResult)) {
+      throw new Error(
+        `Upstream conversion error (code ${typedResult.error})`,
+      );
+    }
+
     if (typeof result["downloadURL"] === "string" && result["downloadURL"]) {
       return result as ConversionResult;
     }
@@ -220,7 +270,16 @@ async function startConversion(
 async function waitForDownload(
   initialResult: ConversionResult,
 ): Promise<ConversionResult> {
-  if (initialResult.downloadURL || !initialResult.progressURL) {
+  // ✅ error thakle downloadURL thakleo eta "ready" dhora jabe na
+  if (
+    initialResult.downloadURL &&
+    !hasUpstreamError(initialResult) &&
+    !initialResult.progressURL
+  ) {
+    return initialResult;
+  }
+
+  if (!initialResult.progressURL) {
     return initialResult;
   }
 
@@ -230,6 +289,11 @@ async function waitForDownload(
       setTimeout(resolve, PROGRESS_POLL_INTERVAL_MS),
     );
     result = (await fetchJson(initialResult.progressURL)) as ConversionResult;
+
+    if (hasUpstreamError(result)) {
+      throw new Error(`Upstream conversion error (code ${result.error})`);
+    }
+
     if (result.downloadURL) {
       return result;
     }
@@ -265,33 +329,86 @@ async function handleDownload(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    const conversion = await startConversion(videoId, format);
-    const result = await waitForDownload(conversion);
+    let finalUrl: string | undefined;
+    let title = "";
+    let lastError: unknown;
 
-    if (!result.downloadURL) {
-      req.log.warn(
-        {
+    // ✅ MAX_VERIFY_RETRIES bar full conversion retry kore, jotokkhon na actual
+    // streamable media link paoa jai (etacloud majhe majhe fake-ready downloadURL dey)
+    for (let attempt = 0; attempt < MAX_VERIFY_RETRIES; attempt += 1) {
+      try {
+        const conversion = await startConversion(videoId, format);
+        const result = await waitForDownload(conversion);
+
+        if (!result.downloadURL) {
+          req.log.warn(
+            {
+              format,
+              attempt,
+              hasProgressUrl: Boolean(result.progressURL),
+              upstreamError: result.error,
+            },
+            "Conversion completed without a download URL",
+          );
+          lastError = new Error(
+            "The upstream converter did not return a download URL",
+          );
+          continue;
+        }
+
+        const candidateUrl = buildDownloadUrl(
+          result.downloadURL,
+          videoId,
           format,
-          hasProgressUrl: Boolean(result.progressURL),
-          upstreamError: result.error,
-        },
-        "Conversion completed without a download URL",
+        );
+
+        const isReal = await verifyDownloadUrl(candidateUrl);
+        if (!isReal) {
+          req.log.warn(
+            { format, attempt, candidateUrl },
+            "downloadURL failed media verification, retrying conversion",
+          );
+          lastError = new Error(
+            "Upstream returned a non-media downloadURL after verification",
+          );
+          continue;
+        }
+
+        finalUrl = candidateUrl;
+        title =
+          (typeof result.title === "string" ? result.title.trim() : "") ||
+          "";
+        break;
+      } catch (err) {
+        lastError = err;
+        req.log.warn(
+          { err, format, attempt },
+          "Conversion attempt failed, retrying",
+        );
+      }
+    }
+
+    if (!finalUrl) {
+      req.log.error(
+        { err: lastError, format },
+        "All conversion attempts exhausted without a valid download URL",
       );
       res.status(502).json({
-        error: "The upstream converter did not return a download URL",
+        error:
+          "Unable to generate a working download URL after multiple attempts",
       });
       return;
     }
 
-    const upstreamTitle =
-      typeof result.title === "string" ? result.title.trim() : "";
-    const title = upstreamTitle || (await fetchYoutubeTitle(link)) || "";
+    if (!title) {
+      title = (await fetchYoutubeTitle(link)) || "";
+    }
 
     res.json({
       author: "rX",
       title,
       format,
-      downloadUrl: buildDownloadUrl(result.downloadURL, videoId, format),
+      downloadUrl: finalUrl,
     });
   } catch (error) {
     req.log.error({ err: error, format }, "Download URL generation failed");
