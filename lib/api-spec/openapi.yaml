@@ -1,0 +1,102 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: download
+    description: YouTube download URL generation
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /dl:
+    get:
+      operationId: getDownloadUrl
+      tags: [download]
+      summary: Generate a YouTube MP4 or MP3 download URL
+      description: Starts the upstream conversion flow and returns a temporary download URL.
+      parameters:
+        - name: link
+          in: query
+          required: true
+          description: A YouTube video URL
+          schema:
+            type: string
+        - name: format
+          in: query
+          required: false
+          description: Output format. Defaults to mp4.
+          schema:
+            type: string
+            enum: [mp4, mp3]
+            default: mp4
+      responses:
+        "200":
+          description: Download URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DownloadResponse"
+        "400":
+          description: Invalid or missing video URL or format
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Upstream conversion failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    DownloadResponse:
+      type: object
+      properties:
+        author:
+          type: string
+        downloadUrl:
+          type: string
+        format:
+          type: string
+          enum: [mp4, mp3]
+        title:
+          type: string
+      required:
+        - author
+        - downloadUrl
+        - format
+        - title
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+

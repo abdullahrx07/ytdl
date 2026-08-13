@@ -1,6 +1,6 @@
 # YouTube MP4/MP3 Download URL API
 
-This project's API server generates a temporary MP4 or MP3 download URL from a YouTube video URL. Bot-side code calls the API and uses the returned `downloadUrl` to download the video or audio.
+এই project-এর API server YouTube video URL নিয়ে একটি temporary MP4 বা MP3 download URL তৈরি করে। Bot-side থেকে API call করে পাওয়া `downloadUrl` ব্যবহার করে video বা audio download করা যাবে।
 
 ## Bot API
 
@@ -10,7 +10,7 @@ This project's API server generates a temporary MP4 or MP3 download URL from a Y
 GET /api/dl?link=<youtube-url>&format=mp4
 ```
 
-The `link` URL must be sent URL-encoded.
+`link` URL অবশ্যই URL-encoded করে পাঠাতে হবে।
 
 #### cURL example
 
@@ -37,7 +37,7 @@ console.log(data.downloadUrl);
 
 ### Default format
 
-If `format` is not provided, `mp4` is used by default:
+`format` না দিলে `mp4` ব্যবহার করা হবে:
 
 ```http
 GET /api/dl?link=<youtube-url>
@@ -45,7 +45,7 @@ GET /api/dl?link=<youtube-url>
 
 ### MP3 support
 
-To get an audio-only URL, pass `format=mp3`:
+Audio-only URL পেতে `format=mp3` পাঠাতে হবে:
 
 ```http
 GET /api/dl?link=<youtube-url>&format=mp3
@@ -67,7 +67,7 @@ GET /api/dl?link=<youtube-url>&format=mp3
 | Field | Type | Description |
 | --- | --- | --- |
 | `author` | string | API response author identifier |
-| `title` | string | Converted video's title, when provided by the converter |
+| `title` | string | Video title from the converter, with YouTube oEmbed metadata as fallback |
 | `format` | `"mp4"` \| `"mp3"` | Requested output format |
 | `downloadUrl` | string | Temporary signed URL for downloading the converted file |
 
@@ -132,6 +132,7 @@ Only YouTube URLs are accepted. Other websites or unsupported URL formats return
 | `GET` | `/api/dl?link=<url>&format=mp4` | Generate a temporary MP4 URL |
 | `GET` | `/api/dl?link=<url>&format=mp3` | Generate a temporary MP3 URL |
 | `GET` | `/api/project.zip` | Download the complete updated project ZIP |
+| `GET` | `/api/title-update.zip` | Download only the updated `download.ts` file |
 
 ## Development
 
@@ -149,13 +150,13 @@ pnpm run typecheck
 
 ### Regenerate API clients and schemas
 
-Run codegen whenever the OpenAPI source file changes:
+OpenAPI source file পরিবর্তন করলে codegen চালাতে হবে:
 
 ```bash
 pnpm --filter @workspace/api-spec run codegen
 ```
 
-Source of truth for the OpenAPI contract:
+OpenAPI contract-এর source of truth:
 
 ```text
 lib/api-spec/openapi.yaml
@@ -163,7 +164,7 @@ lib/api-spec/openapi.yaml
 
 ## Implementation map
 
-- `artifacts/api-server/src/routes/download.ts` — YouTube URL validation, MP4/MP3 conversion flow, progress polling, and response handling
+- `artifacts/api-server/src/routes/download.ts` — YouTube URL validation, MP4/MP3 conversion flow, progress polling এবং response handling
 - `artifacts/api-server/src/routes/project.ts` — Complete project ZIP download route
 - `artifacts/api-server/src/routes/index.ts` — API route registration
 - `lib/api-spec/openapi.yaml` — API contract
@@ -172,10 +173,8 @@ lib/api-spec/openapi.yaml
 
 ## Important notes
 
-- `downloadUrl` is a temporary signed URL; the bot should call the API again for a fresh URL whenever it's needed.
-- The conversion flow depends on an upstream converter service. If the upstream is unavailable, the API returns `502`.
-- When downloading and using videos, comply with YouTube's Terms of Service and the content owner's rights.
-
-## Bot Command
-
-The `yt.js` GoatBot command in this folder uses this API. Usage: `yt [mp4|mp3] <youtube link>`. Set `API_BASE` at the top of `yt.js` to your deployed API host.
+- `downloadUrl` একটি temporary signed URL; bot-এর প্রয়োজনের সময় API call করে নতুন URL নেওয়া উচিত।
+- Converter-এর `progressURL` conversion complete না হওয়া পর্যন্ত poll করা হয়, যাতে premature download থেকে upstream `error:6` না আসে।
+- Upstream quality নির্বাচন করার parameter দেয় না। Real MP4 test-এ output H.264 + AAC এবং 854×480 (480p) পাওয়া গেছে; 360p guarantee করা যায় না।
+- Conversion flow একটি upstream converter service-এর উপর নির্ভরশীল। Upstream unavailable হলে API `502` ফেরত দেয়।
+- Video download এবং ব্যবহার করার ক্ষেত্রে YouTube-এর Terms of Service এবং content owner's rights মেনে চলতে হবে।
