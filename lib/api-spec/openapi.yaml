@@ -30,8 +30,8 @@ paths:
     get:
       operationId: getDownloadUrl
       tags: [download]
-      summary: Generate a YouTube MP3 download URL
-      description: Runs the upstream conversion flow and returns the resulting download URL.
+      summary: Generate a YouTube MP4 or MP3 download URL
+      description: Starts the upstream conversion flow and returns a temporary download URL.
       parameters:
         - name: link
           in: query
@@ -39,6 +39,14 @@ paths:
           description: A YouTube video URL
           schema:
             type: string
+        - name: format
+          in: query
+          required: false
+          description: Output format. Defaults to mp4.
+          schema:
+            type: string
+            enum: [mp4, mp3]
+            default: mp4
       responses:
         "200":
           description: Download URL generated
@@ -47,7 +55,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/DownloadResponse"
         "400":
-          description: Invalid or missing video URL
+          description: Invalid or missing video URL or format
           content:
             application/json:
               schema:
@@ -74,11 +82,15 @@ components:
           type: string
         downloadUrl:
           type: string
+        format:
+          type: string
+          enum: [mp4, mp3]
         title:
           type: string
       required:
         - author
         - downloadUrl
+        - format
         - title
     ErrorResponse:
       type: object

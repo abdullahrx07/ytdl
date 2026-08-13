@@ -5,10 +5,15 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { GetDownloadUrlFormat } from './getDownloadUrlFormat';
 
 export type GetDownloadUrlParams = {
 /**
  * A YouTube video URL
  */
 link: string;
+/**
+ * Output format. Defaults to mp4.
+ */
+format?: GetDownloadUrlFormat;
 };

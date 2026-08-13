@@ -16,6 +16,7 @@ const UPSTREAM_HEADERS = {
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Mobile/15E148 Safari/604.1",
 };
 
+type DownloadFormat = "mp3" | "mp4";
 type JsonRecord = Record<string, unknown>;
 
 type ConversionResult = {
@@ -38,7 +39,31 @@ function getLink(req: Request): string | undefined {
   }
 
   const pathMatch = req.path.match(/^\/dl=(.+)$/);
-  return pathMatch?.[1] ? decodeURIComponent(pathMatch[1]).trim() : undefined;
+  if (!pathMatch?.[1]) {
+    return undefined;
+  }
+
+  try {
+    return decodeURIComponent(pathMatch[1]).trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function getFormat(req: Request): DownloadFormat | undefined {
+  const rawFormat = req.query["format"];
+  if (rawFormat === undefined) {
+    return "mp4";
+  }
+
+  if (typeof rawFormat !== "string") {
+    return undefined;
+  }
+
+  const format = rawFormat.trim().toLowerCase();
+  return format === "mp3" || format === "mp4"
+    ? format
+    : undefined;
 }
 
 function getYoutubeVideoId(value: string): string | undefined {
@@ -106,7 +131,35 @@ async function fetchJson(
   return body;
 }
 
-async function startConversion(videoId: string): Promise<ConversionResult> {
+function buildConvertRequestUrl(
+  convertUrl: string,
+  videoId: string,
+  format: DownloadFormat,
+): string {
+  const baseUrl = convertUrl.split("&v=")[0];
+  const url = new URL(baseUrl);
+  url.searchParams.set("v", videoId);
+  url.searchParams.set("f", format);
+  url.searchParams.set("_", String(Date.now()));
+  return url.toString();
+}
+
+function buildDownloadUrl(
+  downloadUrl: string,
+  videoId: string,
+  format: DownloadFormat,
+): string {
+  const url = new URL(downloadUrl);
+  url.searchParams.set("v", videoId);
+  url.searchParams.set("f", format);
+  url.searchParams.set("r", "y2mate.gs");
+  return url.toString();
+}
+
+async function startConversion(
+  videoId: string,
+  format: DownloadFormat,
+): Promise<ConversionResult> {
   const auth = await fetchJson(`${AUTH_URL}?_=${Date.now()}`);
   const token = typeof auth["key"] === "string" ? auth["key"] : undefined;
   if (!token) {
@@ -118,15 +171,14 @@ async function startConversion(videoId: string): Promise<ConversionResult> {
       Authorization: `Bearer ${token}`,
     },
   });
-  const convertUrl = typeof init["convertURL"] === "string"
-    ? init["convertURL"]
-    : undefined;
+  const convertUrl =
+    typeof init["convertURL"] === "string" ? init["convertURL"] : undefined;
   if (!convertUrl) {
     throw new Error("Upstream init did not return a conversion URL");
   }
 
   let result = await fetchJson(
-    buildConvertRequestUrl(convertUrl, videoId, "mp3"),
+    buildConvertRequestUrl(convertUrl, videoId, format),
   );
   for (let attempt = 0; attempt < MAX_CONVERT_REDIRECTS; attempt += 1) {
     if (typeof result["downloadURL"] === "string" && result["downloadURL"]) {
@@ -142,46 +194,17 @@ async function startConversion(videoId: string): Promise<ConversionResult> {
     }
 
     result = await fetchJson(
-      buildConvertRequestUrl(result["redirectURL"], videoId, "mp3"),
+      buildConvertRequestUrl(result["redirectURL"], videoId, format),
     );
   }
 
   return result as ConversionResult;
 }
 
-function buildConvertRequestUrl(
-  convertUrl: string,
-  videoId: string,
-  format: "mp3" | "mp4",
-): string {
-  const baseUrl = convertUrl.split("&v=")[0];
-  const url = new URL(baseUrl);
-  url.searchParams.set("v", videoId);
-  url.searchParams.set("f", format);
-  url.searchParams.set("_", String(Date.now()));
-  return url.toString();
-}
-
-function buildDownloadUrl(
-  downloadUrl: string,
-  videoId: string,
-  format: "mp3" | "mp4",
-): string {
-  const url = new URL(downloadUrl);
-  url.searchParams.set("v", videoId);
-  url.searchParams.set("f", format);
-  url.searchParams.set("r", "y2mate.gs");
-  return url.toString();
-}
-
 async function waitForDownload(
   initialResult: ConversionResult,
 ): Promise<ConversionResult> {
-  if (initialResult.downloadURL) {
-    return initialResult;
-  }
-
-  if (!initialResult.progressURL) {
+  if (initialResult.downloadURL || !initialResult.progressURL) {
     return initialResult;
   }
 
@@ -201,10 +224,18 @@ async function waitForDownload(
 
 async function handleDownload(req: Request, res: Response): Promise<void> {
   const link = getLink(req);
+  const format = getFormat(req);
 
   if (!link) {
     res.status(400).json({
       error: "Missing required query parameter: link",
+    });
+    return;
+  }
+
+  if (!format) {
+    res.status(400).json({
+      error: "format must be either mp4 or mp3",
     });
     return;
   }
@@ -218,12 +249,13 @@ async function handleDownload(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    const conversion = await startConversion(videoId);
+    const conversion = await startConversion(videoId, format);
     const result = await waitForDownload(conversion);
 
     if (!result.downloadURL) {
       req.log.warn(
         {
+          format,
           hasProgressUrl: Boolean(result.progressURL),
           upstreamError: result.error,
         },
@@ -238,10 +270,11 @@ async function handleDownload(req: Request, res: Response): Promise<void> {
     res.json({
       author: "rX",
       title: result.title ?? "",
-      downloadUrl: buildDownloadUrl(result.downloadURL, videoId, "mp3"),
+      format,
+      downloadUrl: buildDownloadUrl(result.downloadURL, videoId, format),
     });
   } catch (error) {
-    req.log.error({ err: error }, "Download URL generation failed");
+    req.log.error({ err: error, format }, "Download URL generation failed");
     res.status(502).json({
       error: "Unable to generate a download URL",
     });

@@ -7,6 +7,8 @@
  */
 
 export * from './downloadResponse';
+export * from './downloadResponseFormat';
 export * from './errorResponse';
+export * from './getDownloadUrlFormat';
 export * from './getDownloadUrlParams';
 export * from './healthStatus';

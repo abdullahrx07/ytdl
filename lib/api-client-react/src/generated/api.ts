@@ -143,8 +143,8 @@ export const getGetDownloadUrlUrl = (params: GetDownloadUrlParams,) => {
 }
 
 /**
- * Runs the upstream conversion flow and returns the resulting download URL.
- * @summary Generate a YouTube MP3 download URL
+ * Starts the upstream conversion flow and returns a temporary download URL.
+ * @summary Generate a YouTube MP4 or MP3 download URL
  */
 export const getDownloadUrl = async (params: GetDownloadUrlParams, options?: Parameters<typeof customFetch>[1]): Promise<DownloadResponse> => {
 
@@ -191,7 +191,7 @@ export type GetDownloadUrlQueryError = ErrorType<ErrorResponse>
 
 
 /**
- * @summary Generate a YouTube MP3 download URL
+ * @summary Generate a YouTube MP4 or MP3 download URL
  */
 
 export function useGetDownloadUrl<TData = Awaited<ReturnType<typeof getDownloadUrl>>, TError = ErrorType<ErrorResponse>>(

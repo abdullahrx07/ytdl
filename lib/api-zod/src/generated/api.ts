@@ -18,16 +18,20 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * Runs the upstream conversion flow and returns the resulting download URL.
- * @summary Generate a YouTube MP3 download URL
+ * Starts the upstream conversion flow and returns a temporary download URL.
+ * @summary Generate a YouTube MP4 or MP3 download URL
  */
+export const getDownloadUrlQueryFormatDefault = `mp4`;
+
 export const GetDownloadUrlQueryParams = zod.object({
-  "link": zod.coerce.string().describe('A YouTube video URL')
+  "link": zod.coerce.string().describe('A YouTube video URL'),
+  "format": zod.enum(['mp4', 'mp3']).default(getDownloadUrlQueryFormatDefault).describe('Output format. Defaults to mp4.')
 })
 
 export const GetDownloadUrlResponse = zod.object({
   "author": zod.string(),
   "downloadUrl": zod.string(),
+  "format": zod.enum(['mp4', 'mp3']),
   "title": zod.string()
 })
 

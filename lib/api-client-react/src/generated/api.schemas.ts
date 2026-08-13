@@ -9,9 +9,18 @@ export interface HealthStatus {
   status: string;
 }
 
+export type DownloadResponseFormat = typeof DownloadResponseFormat[keyof typeof DownloadResponseFormat];
+
+
+export const DownloadResponseFormat = {
+  mp4: 'mp4',
+  mp3: 'mp3',
+} as const;
+
 export interface DownloadResponse {
   author: string;
   downloadUrl: string;
+  format: DownloadResponseFormat;
   title: string;
 }
 
@@ -24,5 +33,17 @@ export type GetDownloadUrlParams = {
  * A YouTube video URL
  */
 link: string;
+/**
+ * Output format. Defaults to mp4.
+ */
+format?: GetDownloadUrlFormat;
 };
+
+export type GetDownloadUrlFormat = typeof GetDownloadUrlFormat[keyof typeof GetDownloadUrlFormat];
+
+
+export const GetDownloadUrlFormat = {
+  mp4: 'mp4',
+  mp3: 'mp3',
+} as const;
 

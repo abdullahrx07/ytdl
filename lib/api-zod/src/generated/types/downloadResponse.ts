@@ -5,9 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { DownloadResponseFormat } from './downloadResponseFormat';
 
 export interface DownloadResponse {
   author: string;
   downloadUrl: string;
+  format: DownloadResponseFormat;
   title: string;
 }
