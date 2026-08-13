@@ -1,6 +1,6 @@
 # YouTube MP4/MP3 Download URL API
 
-এই project-এর API server YouTube video URL নিয়ে একটি temporary MP4 বা MP3 download URL তৈরি করে। Bot-side থেকে API call করে পাওয়া `downloadUrl` ব্যবহার করে video বা audio download করা যাবে।
+This project's API server generates a temporary MP4 or MP3 download URL from a YouTube video URL. Bot-side code calls the API and uses the returned `downloadUrl` to download the video or audio.
 
 ## Bot API
 
@@ -10,7 +10,7 @@
 GET /api/dl?link=<youtube-url>&format=mp4
 ```
 
-`link` URL অবশ্যই URL-encoded করে পাঠাতে হবে।
+The `link` URL must be sent URL-encoded.
 
 #### cURL example
 
@@ -37,7 +37,7 @@ console.log(data.downloadUrl);
 
 ### Default format
 
-`format` না দিলে `mp4` ব্যবহার করা হবে:
+If `format` is not provided, `mp4` is used by default:
 
 ```http
 GET /api/dl?link=<youtube-url>
@@ -45,7 +45,7 @@ GET /api/dl?link=<youtube-url>
 
 ### MP3 support
 
-Audio-only URL পেতে `format=mp3` পাঠাতে হবে:
+To get an audio-only URL, pass `format=mp3`:
 
 ```http
 GET /api/dl?link=<youtube-url>&format=mp3
@@ -149,13 +149,13 @@ pnpm run typecheck
 
 ### Regenerate API clients and schemas
 
-OpenAPI source file পরিবর্তন করলে codegen চালাতে হবে:
+Run codegen whenever the OpenAPI source file changes:
 
 ```bash
 pnpm --filter @workspace/api-spec run codegen
 ```
 
-OpenAPI contract-এর source of truth:
+Source of truth for the OpenAPI contract:
 
 ```text
 lib/api-spec/openapi.yaml
@@ -163,7 +163,7 @@ lib/api-spec/openapi.yaml
 
 ## Implementation map
 
-- `artifacts/api-server/src/routes/download.ts` — YouTube URL validation, MP4/MP3 conversion flow, progress polling এবং response handling
+- `artifacts/api-server/src/routes/download.ts` — YouTube URL validation, MP4/MP3 conversion flow, progress polling, and response handling
 - `artifacts/api-server/src/routes/project.ts` — Complete project ZIP download route
 - `artifacts/api-server/src/routes/index.ts` — API route registration
 - `lib/api-spec/openapi.yaml` — API contract
@@ -172,6 +172,10 @@ lib/api-spec/openapi.yaml
 
 ## Important notes
 
-- `downloadUrl` একটি temporary signed URL; bot-এর প্রয়োজনের সময় API call করে নতুন URL নেওয়া উচিত।
-- Conversion flow একটি upstream converter service-এর উপর নির্ভরশীল। Upstream unavailable হলে API `502` ফেরত দেয়।
-- Video download এবং ব্যবহার করার ক্ষেত্রে YouTube-এর Terms of Service এবং content owner's rights মেনে চলতে হবে।
+- `downloadUrl` is a temporary signed URL; the bot should call the API again for a fresh URL whenever it's needed.
+- The conversion flow depends on an upstream converter service. If the upstream is unavailable, the API returns `502`.
+- When downloading and using videos, comply with YouTube's Terms of Service and the content owner's rights.
+
+## Bot Command
+
+The `yt.js` GoatBot command in this folder uses this API. Usage: `yt [mp4|mp3] <youtube link>`. Set `API_BASE` at the top of `yt.js` to your deployed API host.
